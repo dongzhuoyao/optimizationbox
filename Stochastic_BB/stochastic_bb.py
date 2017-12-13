@@ -15,8 +15,29 @@ __author__ = 'Conghui Tan'
 __email__ = 'tanconghui@gmail.com'
 
 
+def get_loss(sess, loss, data):
+    return sess.run([loss], feed_dict={"data:0": data})[0]
 
 
+def get_grad(sess, grad, data):
+    return sess.run([grad], feed_dict={"data:0": data})[0]
+
+
+def get_var(sess, var):
+    return sess.run([var])[0]
+
+
+def assign_var(sess, var, value):
+    assign_op = var.assign(value)
+    sess.run(assign_op)
+
+
+def get_grad_on_var(sess, data, grad, tensor_x, par=None):
+    if par is not None:
+        par = get_var(sess, tensor_x)
+        assign_var(sess, tensor_x, par)
+
+    return get_grad(sess,grad, data)
 
 
 def svrg_bb(grad, init_step_size, n, d, sess, par, whole_data, max_epoch=100, m=0, tensor_x=None, func=None,
@@ -35,30 +56,12 @@ def svrg_bb(grad, init_step_size, n, d, sess, par, whole_data, max_epoch=100, m=
             print('Info: set m=n by default')
 
 
-    def get_loss(data):
-        return sess.run([func], feed_dict={"data:0": data})[0]
-
-    def get_grad(data):
-        return sess.run([grad], feed_dict={"data:0": data})[0]
-
-    def get_var(var):
-        return sess.run([var])[0]
-
-    def ass_var(var, value):
-        assign_op = var.assign(value)
-        sess.run(assign_op)
-
-
-    def get_grad_on_var(data,par):
-        ass_var(tensor_x, par)
-        return get_grad(data)
-
     step_size = init_step_size
     for k in range(max_epoch):
 
         #full_grad = grad(x, range(n))
-        full_grad = get_grad_on_var(whole_data,tensor_x)
-        x_tilde = get_var(tensor_x)
+        full_grad = get_grad_on_var(sess,whole_data, grad, tensor_x)
+        x_tilde = get_var(sess,tensor_x)
         # estimate step size by BB method
         if k > 0:
             s = x_tilde - last_x_tilde
@@ -71,14 +74,14 @@ def svrg_bb(grad, init_step_size, n, d, sess, par, whole_data, max_epoch=100, m=
             output = 'Epoch.: %d, Step size: %.2e, Grad. norm: %.2e' % \
                      (k, step_size, np.linalg.norm(full_grad))
             if func is not None:
-                output += ', Func. value: %e' % get_loss(whole_data)
+                output += ', Func. value: %e' % get_loss(sess, func, whole_data)
             print(output)
 
         for i in range(m):
             idx = (random.randrange(n), )
-            delta = step_size * (get_grad_on_var(whole_data[idx,:],tensor_x) - get_grad_on_var(whole_data[idx,:],x_tilde) + full_grad)
-            ass_var(tensor_x, tensor_x - delta)
-    return get_var(tensor_x)
+            delta = step_size * (get_grad_on_var(sess,whole_data[idx,:], grad, tensor_x) - get_grad_on_var(sess,whole_data[idx,:], grad, tensor_x, x_tilde) + full_grad)
+            assign_var(sess, tensor_x, tensor_x - delta)
+    return get_var(sess,tensor_x)
 
 
 def sgd_bb(grad, init_step_size, n, d, tensor_x, func, sess, par, whole_data, max_epoch=100, m=0, beta=0, phi=lambda k: k,
@@ -104,23 +107,10 @@ def sgd_bb(grad, init_step_size, n, d, tensor_x, func, sess, par, whole_data, ma
         if verbose:
             print('Info: set beta=10/m by default')
 
-    def get_grad(data):
-        return sess.run([grad], feed_dict={"data:0": data})[0]
-
-    def get_loss(data):
-        return sess.run([func], feed_dict={"data:0": data})[0]
-
-    def get_var(var):
-        return sess.run([var])[0]
-
-    def ass_var(var, value):
-        assign_op = var.assign(value)
-        sess.run(assign_op)
-
     step_size = init_step_size
     c = 1
     for k in range(max_epoch):
-        x_tilde = get_var(tensor_x)
+        x_tilde = get_var(sess,tensor_x)
         # estimate step size by BB method
         if k > 1:
             s = x_tilde - last_x_tilde
@@ -132,10 +122,10 @@ def sgd_bb(grad, init_step_size, n, d, tensor_x, func, sess, par, whole_data, ma
                 step_size = c / phi(k)
 
         if verbose:
-            full_grad = get_grad(whole_data)
+            full_grad = get_grad(sess, grad, whole_data)
             output = 'Epoch.: {}, Step size: {}, Grad. norm: {}'.format(k, step_size, np.linalg.norm(full_grad))
             if func is not None:
-                output += ', Func. value: %e' % get_loss(whole_data)
+                output += ', Func. value: %e' % get_loss(sess, func, whole_data)
             print(output)
 
         if k > 0:
@@ -148,10 +138,9 @@ def sgd_bb(grad, init_step_size, n, d, tensor_x, func, sess, par, whole_data, ma
         #core logic
         for i in range(m):
             idx = (random.randrange(n), )
-            g = get_grad(whole_data[idx,:])
-            ass_var(tensor_x, tensor_x - step_size * g)
+            g = get_grad(sess, grad, whole_data[idx,:])
+            assign_var(sess,tensor_x, tensor_x - step_size * g)
             # average the gradients
             grad_hat = beta*g + (1-beta)*grad_hat
-
 
     return tensor_x

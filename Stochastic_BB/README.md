@@ -15,7 +15,7 @@ Please cite this paper if you use this code in your published research project.
 
 The code can be run with either Python 2 or Python 3, with [numpy](http://www.numpy.org/) package installed.
 
-But to run the example, [scipy](https://www.scipy.org/) and [theano](http://deeplearning.net/software/theano/) are also needed.
+But to run the example, [scipy](https://www.scipy.org/) and [tensorflow](https://www.tensorflow.org/) are also needed.
 
 ## License
 

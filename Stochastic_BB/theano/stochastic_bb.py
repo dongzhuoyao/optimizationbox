@@ -2,8 +2,7 @@
 
 import numpy as np
 import random
-import tensorflow as tf
-from tqdm import tqdm
+
 """
     Python implementation of SVRG-BB and SGD-BB methods from the following paper:
     "Barzilai-Borwein Step Size for Stochastic Gradient Descent".
@@ -15,32 +14,7 @@ __author__ = 'Conghui Tan'
 __email__ = 'tanconghui@gmail.com'
 
 
-def get_loss(sess, loss, data):
-    return sess.run([loss], feed_dict={"data:0": data})[0]
-
-
-def get_grad(sess, grad, data):
-    return sess.run([grad], feed_dict={"data:0": data})[0]
-
-
-def get_var(sess, var):
-    return sess.run([var])[0]
-
-
-def assign_var(sess, var, value):
-    assign_op = var.assign(value)
-    sess.run(assign_op)
-
-
-def get_grad_on_var(sess, data, grad, tensor_x, par=None):
-    if par is not None:
-        par = get_var(sess, tensor_x)
-        assign_var(sess, tensor_x, par)
-
-    return get_grad(sess,grad, data)
-
-
-def svrg_bb(grad, init_step_size, n, d, sess, par, whole_data, max_epoch=100, m=0, tensor_x=None, func=None,
+def svrg_bb(grad, init_step_size, n, d, max_epoch=100, m=0, x0=None, func=None,
             verbose=True):
     """
         SVRG with Barzilai-Borwein step size for solving finite-sum problems
@@ -55,18 +29,22 @@ def svrg_bb(grad, init_step_size, n, d, sess, par, whole_data, max_epoch=100, m=
         if verbose:
             print('Info: set m=n by default')
 
+    if x0 is None:
+        x = np.zeros(d)
+    elif isinstance(x0, np.ndarray) and x0.shape == (d, ):
+        x = x0.copy()
+    else:
+        raise ValueError('x0 must be a numpy array of size (d, )')
 
     step_size = init_step_size
     for k in range(max_epoch):
-
-        #full_grad = grad(x, range(n))
-        full_grad = get_grad_on_var(sess,whole_data, grad, tensor_x)
-        x_tilde = get_var(sess,tensor_x)
+        full_grad = grad(x, range(n))
+        x_tilde = x.copy()
         # estimate step size by BB method
         if k > 0:
             s = x_tilde - last_x_tilde
             y = full_grad - last_full_grad
-            step_size = np.linalg.norm(s)**2 / np.dot(np.squeeze(s), np.squeeze(y)) / m
+            step_size = np.linalg.norm(s)**2 / np.dot(s, y) / m
 
         last_full_grad = full_grad
         last_x_tilde = x_tilde
@@ -74,18 +52,18 @@ def svrg_bb(grad, init_step_size, n, d, sess, par, whole_data, max_epoch=100, m=
             output = 'Epoch.: %d, Step size: %.2e, Grad. norm: %.2e' % \
                      (k, step_size, np.linalg.norm(full_grad))
             if func is not None:
-                output += ', Func. value: %e' % get_loss(sess, func, whole_data)
+                output += ', Func. value: %e' % func(x)
             print(output)
 
         for i in range(m):
             idx = (random.randrange(n), )
-            delta = step_size * (get_grad_on_var(sess,whole_data[idx,:], grad, tensor_x) - get_grad_on_var(sess,whole_data[idx,:], grad, tensor_x, x_tilde) + full_grad)
-            assign_var(sess, tensor_x, tensor_x - delta)
-    return get_var(sess,tensor_x)
+            x -= step_size * (grad(x, idx) - grad(x_tilde, idx) + full_grad)
+
+    return x
 
 
-def sgd_bb(grad, init_step_size, n, d, tensor_x, func, sess, par, whole_data, max_epoch=100, m=0, beta=0, phi=lambda k: k,
-           verbose=True):
+def sgd_bb(grad, init_step_size, n, d, max_epoch=100, m=0, x0=None, beta=0, phi=lambda k: k,
+           func=None, verbose=True):
     """
         SGD with Barzilai-Borwein step size for solving finite-sum problems
 
@@ -107,43 +85,47 @@ def sgd_bb(grad, init_step_size, n, d, tensor_x, func, sess, par, whole_data, ma
         if verbose:
             print('Info: set beta=10/m by default')
 
+    if x0 is None:
+        x = np.zeros(d)
+    elif isinstance(x0, np.ndarray) and x0.shape == (d, ):
+        x = x0.copy()
+    else:
+        raise ValueError('x0 must be a numpy array of size (d, )')
+
     step_size = init_step_size
     c = 1
     for k in range(max_epoch):
-        x_tilde = get_var(sess,tensor_x)
+        x_tilde = x.copy()
         # estimate step size by BB method
         if k > 1:
             s = x_tilde - last_x_tilde
             y = grad_hat - last_grad_hat
-            step_size = np.linalg.norm(s)**2 / abs(np.dot(np.squeeze(s), np.squeeze(y))) / m
+            step_size = np.linalg.norm(s)**2 / abs(np.dot(s, y)) / m
             # smoothing the step sizes
             if phi is not None:
                 c = c ** ((k-2)/(k-1)) * (step_size*phi(k)) ** (1/(k-1))
                 step_size = c / phi(k)
 
         if verbose:
-            full_grad = get_grad(sess, grad, whole_data)
-            output = 'Epoch.: {}, Step size: {}, Grad. norm: {}'.format(k, step_size, np.linalg.norm(full_grad))
+            full_grad = grad(x, range(n))
+            output = 'Epoch.: %d, Step size: %.2e, Grad. norm: %.2e' % \
+                     (k, step_size, np.linalg.norm(full_grad))
             if func is not None:
-                output += ', Func. value: %e' % get_loss(sess, func, whole_data)
+                output += ', Func. value: %e' % func(x)
             print(output)
 
         if k > 0:
             last_grad_hat = grad_hat
             last_x_tilde = x_tilde
-
-        if k == 0:
-            grad_hat = np.zeros((d,1))
+        if k==0:
+            grad_hat = np.zeros(d)
 
         #core logic
         for i in range(m):
             idx = (random.randrange(n), )
-            #g = get_grad(sess, grad, whole_data[idx,:]) too slow
-            #assign_var(sess,tensor_x, tensor_x - step_size * g) too slow
-            tensor_g = tf.gradients(func, [par])[0]
-            new_x = tensor_x.assign(tensor_x - step_size*tensor_g)
-            g,_ = sess.run([tensor_g, new_x],feed_dict = {"data":whole_data[idx,:]})
+            g = grad(x, idx)
+            x -= step_size * g
             # average the gradients
             grad_hat = beta*g + (1-beta)*grad_hat
 
-    return get_var(sess,tensor_x)
+    return x

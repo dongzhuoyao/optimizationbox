@@ -37,26 +37,26 @@ if __name__ == '__main__':
     loss = tf.reduce_mean(tf.log(1 + tf.exp(-tf.matmul(data, par)))) + tf.reduce_sum(l2 / 2 * (par ** 2))
     grad = tf.gradients(loss, [par])[0]
 
-    # test SGD-BB
-    sess = tf.Session()
-    sess.run(tf.global_variables_initializer())
-    print('\nBegin to run SGD-BB:')
-    x = sgd_bb(grad, 1e-3, n, d, phi=lambda k: k, tensor_x=par, func=loss, sess=sess, par=par, whole_data=whole_data,
-               beta=0.3, max_epoch=50)
-    y_predict = np.sign(np.dot(A_test, x))
-    print('Test accuracy: %f' % (np.count_nonzero(y_test == y_predict) * 1.0 / n))
-    sess.close()
-
-
     # test SVRG-BB
-    sess = tf.Session()
-    sess.run(tf.global_variables_initializer())
-    x0 = np.random.rand(d)
-    print('Begin to run SVRG-BB:')
-    x = svrg_bb(grad, 1e-3, n, d, tensor_x=par,func=loss, sess = sess,par = par,whole_data=whole_data, max_epoch=50)
-    y_predict = np.sign(np.dot(A_test, x))
-    print('Test accuracy: %f' % (np.count_nonzero(y_test == y_predict)*1.0 / n))
-    sess.close()
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        x0 = np.random.rand(d)
+        print('Begin to run SVRG-BB:')
+        x = svrg_bb(grad, 1e-3, n, d, tensor_x=par, func=loss, sess=sess, par=par, whole_data=whole_data, max_epoch=50)
+        y_predict = np.sign(np.dot(A_test, x))
+        print('Test accuracy: %f' % (np.count_nonzero(y_test == np.sqeeze(y_predict)) * 1.0 / n))
+
+
+
+
+    # test SGD-BB
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        print('\nBegin to run SGD-BB:')
+        x = sgd_bb(grad, 1e-3, n, d, phi=lambda k: k, tensor_x=par, func=loss, sess=sess, par=par, whole_data=whole_data,
+                   beta=0.3, max_epoch=50)
+        y_predict = np.sign(np.dot(A_test, x))
+        print('Test accuracy: %f' % (np.count_nonzero(y_test == np.sqeeze(y_predict)) * 1.0 / n))
 
 
 
